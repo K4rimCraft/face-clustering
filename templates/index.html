@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Sorter V3</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/dialog.css">
+    <link rel="stylesheet" href="/static/toggle.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <h1>Face Sorter</h1>
+            <span class="version">V3</span>
+        </div>
+
+        <div class="control-group">
+            <label for="eps">DBSCAN Epsilon</label>
+            <div class="slider-row">
+                <input type="range" id="eps" min="0.1" max="0.9" step="0.05" value="0.45">
+                <span id="eps-val" class="slider-value">0.45</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label for="min-samples">Min Samples</label>
+            <div class="slider-row">
+                <input type="range" id="min-samples" min="2" max="10" step="1" value="3">
+                <span id="min-samples-val" class="slider-value">3</span>
+            </div>
+        </div>
+
+        <button id="cluster-btn" class="btn-primary">
+            <span class="btn-icon">⚙️</span>
+            Re-Cluster Photos
+        </button>
+
+        <div id="cluster-status" class="status-box hidden"></div>
+
+        <a href="/quicksort" class="btn-secondary" style="display: block; text-align: center; margin-top: 12px;">
+            ⚡ Quick Sort
+        </a>
+
+        <div class="divider"></div>
+
+        <div class="control-group">
+            <label for="preview-size">Preview Size</label>
+            <input type="number" id="preview-size" class="input-field" value="24" min="4" max="100">
+        </div>
+
+        <div class="control-group">
+            <label for="per-page">Clusters per Page</label>
+            <input type="number" id="per-page" class="input-field" value="20" min="5" max="100">
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-group">
+            <label>Manage People</label>
+            <input type="text" id="manage-search" class="input-field" placeholder="Search to manage..."
+                onkeyup="filterManageList()">
+            <div id="manage-list" class="manage-list">
+                <!-- People items inserted here -->
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sidebar-footer">
+            <button id="refresh-btn" class="btn-secondary" onclick="loadClusters()">
+                🔄 Refresh
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="main-content">
+
+        <!-- TOP ROW: Two Columns -->
+        <div class="columns-container">
+
+            <!-- LEFT COLUMN: Verified Library -->
+            <section class="column" id="col-verified">
+                <div class="column-header">
+                    <h2>📚 Verified Library</h2>
+                    <span id="count-verified" class="badge">0</span>
+                </div>
+                <div class="search-row">
+                    <input type="text" id="search-verified" class="search-input" placeholder="Search library..."
+                        onkeyup="handleSearch()">
+                    <div id="pagination-verified" class="pagination"></div>
+                </div>
+                <div id="list-verified" class="cluster-list"></div>
+            </section>
+
+            <!-- RIGHT COLUMN: Workbench -->
+            <section class="column" id="col-workbench">
+                <div class="column-header">
+                    <h2>🔧 Workbench</h2>
+                    <span id="count-workbench" class="badge">0</span>
+                </div>
+                <div class="search-row">
+                    <button id="filter-suggestions" class="btn-icon-toggle" title="Show only suggested matches"
+                        onclick="toggleSuggestionFilter()">
+                        ✨
+                    </button>
+                    <input type="text" id="search-workbench" class="search-input" placeholder="Search suggestions..."
+                        onkeyup="handleSearch()">
+                    <div id="pagination-workbench" class="pagination"></div>
+                </div>
+                <div id="list-workbench" class="cluster-list"></div>
+            </section>
+
+        </div>
+
+        <!-- BOTTOM ROW: Unsorted Faces -->
+        <section id="unsorted-section" class="hidden">
+            <div id="unsorted-resize-handle" class="resize-handle"></div>
+            <div class="unsorted-header">
+                <h3>⚠️ Unsorted Faces</h3>
+                <span id="unsorted-count" class="badge badge-warning">0</span>
+            </div>
+            <div id="unsorted-faces" class="face-row"></div>
+            <button id="load-all-unsorted" class="btn-text hidden" onclick="loadAllUnsorted()">
+                Load All
+            </button>
+        </section>
+
+    </main>
+
+    <!-- MODAL: Full Image Viewer -->
+    <div id="modal" class="modal hidden" onclick="closeModal()">
+        <button class="modal-close" onclick="event.stopPropagation(); closeModal()">&times;</button>
+        <button class="modal-nav modal-prev" onclick="event.stopPropagation(); modalPrev()">&lsaquo;</button>
+        <button class="modal-nav modal-next" onclick="event.stopPropagation(); modalNext()">&rsaquo;</button>
+        <img id="modal-img" src="" alt="Full size image" onclick="event.stopPropagation()">
+        <div id="modal-path" class="modal-path" onclick="event.stopPropagation()"></div>
+    </div>
+
+    <!-- CONTEXT MENU -->
+    <div id="context-menu" class="context-menu hidden">
+        <div class="ctx-header">Move to...</div>
+
+        <div class="ctx-actions">
+            <button id="ctx-trash-btn" class="ctx-btn-danger" onclick="trashSelectedFaces()">
+                🗑️ Dismiss / Trash
+            </button>
+        </div>
+
+        <input type="text" id="ctx-new-name" class="ctx-input" placeholder="Create new person...">
+        <input type="text" id="ctx-search" class="ctx-input" placeholder="🔍 Search people..."
+            oninput="filterContextMenu()">
+        <div id="ctx-people-list" class="ctx-list"></div>
+    </div>
+
+    <!-- AUTOCOMPLETE DROPDOWN -->
+    <div id="autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
+
+    <!-- ACTION DIALOG -->
+    <div id="dialog-overlay" class="modal hidden">
+        <div class="dialog-box" onclick="event.stopPropagation()">
+            <h3 id="dialog-title">Title</h3>
+            <p id="dialog-message">Message</p>
+            <input type="text" id="dialog-input" class="input-field hidden" placeholder="Enter name...">
+            <div class="dialog-buttons">
+                <button id="dialog-cancel" class="btn-secondary">Cancel</button>
+                <button id="dialog-confirm" class="btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

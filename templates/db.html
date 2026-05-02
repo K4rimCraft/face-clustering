@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Viewer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-body: #0d1117;
+            --bg-card: #21262d;
+            --bg-input: #161b22;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #238636;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-link {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .stats {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 24px;
+            min-width: 150px;
+        }
+
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+        }
+
+        .stat-card .label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px 8px 0 0;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: none;
+        }
+
+        .tab.active {
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border-color: var(--accent-blue);
+            border-bottom: 2px solid var(--bg-input);
+        }
+
+        .table-container {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 0 8px 8px 8px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th,
+        td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        tr:hover td {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        td {
+            color: var(--text-primary);
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        td.path {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-card);
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            border-color: var(--accent-blue);
+        }
+
+        .blob-preview {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🗄️ Database Viewer</h1>
+        <a href="/" class="back-link">← Back to Face Sorter</a>
+    </div>
+
+    <div class="stats" id="stats">
+        <!-- Filled by JS -->
+    </div>
+
+    <div class="tabs" id="tabs">
+        <div class="tab active" data-table="images">Images</div>
+        <div class="tab" data-table="faces">Faces</div>
+        <div class="tab" data-table="people">People</div>
+    </div>
+
+    <div class="table-container">
+        <table id="data-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+        </table>
+        <div class="pagination">
+            <button id="prev-btn" onclick="prevPage()">← Previous</button>
+            <span id="page-info">Page 1</span>
+            <button id="next-btn" onclick="nextPage()">Next →</button>
+        </div>
+    </div>
+
+    <script>
+        let currentTable = 'images';
+        let currentPage = 1;
+        const perPage = 50;
+        let totalRows = 0;
+
+        async function loadStats() {
+            const res = await fetch('/api/db/stats');
+            const data = await res.json();
+
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <div class="number">${data.images}</div>
+                    <div class="label">Images</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">${data.faces}</div>
+                    <div class="label">Faces</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">${data.people}</div>
+                    <div class="label">People</div>
+                </div>
+            `;
+        }
+
+        async function loadTable(table, page = 1) {
+            currentTable = table;
+            currentPage = page;
+
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.table === table);
+            });
+
+            const res = await fetch(`/api/db/table/${table}?page=${page}&per_page=${perPage}`);
+            const data = await res.json();
+
+            totalRows = data.total;
+
+            // Build header
+            const thead = document.getElementById('table-head');
+            thead.innerHTML = '<tr>' + data.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+            // Build body
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = data.rows.map(row => {
+                return '<tr>' + data.columns.map(col => {
+                    let val = row[col];
+
+                    // Handle special cases
+                    if (val === null) {
+                        return '<td class="blob-preview">NULL</td>';
+                    }
+                    if (typeof val === 'string' && val.startsWith('[BLOB')) {
+                        return `<td class="blob-preview">${val}</td>`;
+                    }
+                    if (col === 'path' || col === 'original_path') {
+                        return `<td class="path" title="${val}">${val}</td>`;
+                    }
+
+                    return `<td>${val}</td>`;
+                }).join('') + '</tr>';
+            }).join('');
+
+            // Update pagination
+            const totalPages = Math.ceil(totalRows / perPage);
+            document.getElementById('page-info').textContent = `Page ${page} of ${totalPages}`;
+            document.getElementById('prev-btn').disabled = page <= 1;
+            document.getElementById('next-btn').disabled = page >= totalPages;
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                loadTable(currentTable, currentPage - 1);
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(totalRows / perPage);
+            if (currentPage < totalPages) {
+                loadTable(currentTable, currentPage + 1);
+            }
+        }
+
+        // Tab clicks
+        document.getElementById('tabs').addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                loadTable(e.target.dataset.table, 1);
+            }
+        });
+
+        // Initial load
+        loadStats();
+        loadTable('images', 1);
+    </script>
+</body>
+
+</html>

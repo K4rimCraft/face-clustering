@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Sort - Face Sorter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Quick Sort Page Specific Styles */
+        body {
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+
+        .qs-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+
+        .qs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .qs-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: var(--text-primary);
+        }
+
+        .qs-header .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .qs-stats {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .qs-stat {
+            background: var(--bg-card);
+            padding: 8px 16px;
+            border-radius: var(--border-radius);
+            font-size: 0.9rem;
+        }
+
+        .qs-stat strong {
+            color: var(--accent-blue);
+        }
+
+        .qs-group {
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .qs-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--bg-sidebar);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .qs-group-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .qs-group-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .qs-group-count {
+            background: var(--bg-hover);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .qs-group-confidence {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .qs-group-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-accept {
+            background: var(--accent-green);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.15s;
+        }
+
+        .btn-accept:hover {
+            background: var(--accent-green-hover);
+        }
+
+        .btn-accept:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-reject {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.15s;
+        }
+
+        .btn-reject:hover {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .qs-faces {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 16px;
+        }
+
+        .qs-face {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.15s;
+        }
+
+        .qs-face:hover {
+            transform: scale(1.05);
+        }
+
+        .qs-face.selected {
+            border-color: var(--accent-blue);
+        }
+
+        .qs-face.excluded {
+            opacity: 0.3;
+            border-color: var(--accent-red);
+        }
+
+        .qs-face img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .qs-face-badge {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+
+        .no-match-group .qs-group-header {
+            background: rgba(218, 54, 51, 0.1);
+        }
+
+        .no-match-group .qs-group-name {
+            color: var(--text-muted);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-text {
+            color: #fff;
+            font-size: 1.2rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state h2 {
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="qs-container">
+        <div class="qs-header">
+            <div>
+                <h1>⚡ Quick Sort</h1>
+                <div class="subtitle">AI-suggested matches for unsorted faces</div>
+            </div>
+            <div class="qs-stats">
+                <div class="qs-stat"><strong id="stat-total">0</strong> faces analyzed</div>
+                <div class="qs-stat"><strong id="stat-groups">0</strong> groups</div>
+                <a href="/" class="btn-secondary">← Back to Main</a>
+            </div>
+        </div>
+
+        <div id="groups-container">
+            <div class="loading-text">Loading...</div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <!-- FULLSCREEN MODAL -->
+    <div id="modal" class="modal hidden" onclick="closeModal()">
+        <button class="modal-close" onclick="event.stopPropagation(); closeModal()">&times;</button>
+        <button class="modal-nav modal-prev" onclick="event.stopPropagation(); modalPrev()">&lsaquo;</button>
+        <button class="modal-nav modal-next" onclick="event.stopPropagation(); modalNext()">&rsaquo;</button>
+        <img id="modal-img" src="" alt="Full size image" onclick="event.stopPropagation()">
+        <div id="modal-path" class="modal-path" onclick="event.stopPropagation()"></div>
+    </div>
+
+    <script>
+        // Store data globally
+        let groupsData = [];
+        let modalFaces = [];
+        let modalIndex = 0;
+
+        // Badge class helper
+        function getBadgeClass(confidence) {
+            if (confidence >= 70) return 'badge-high';
+            if (confidence >= 40) return 'badge-medium';
+            return 'badge-low';
+        }
+
+        // Load data
+        async function loadQuickSortData() {
+            const container = document.getElementById('groups-container');
+
+            try {
+                const res = await fetch('/api/quicksort');
+                const data = await res.json();
+
+                groupsData = data.groups;
+
+                document.getElementById('stat-total').textContent = data.total;
+                document.getElementById('stat-groups').textContent = data.groups.length;
+
+                if (data.groups.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h2>No unsorted faces!</h2>
+                            <p>All faces have been sorted. Great job!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                data.groups.forEach((group, groupIdx) => {
+                    const isNoMatch = group.cluster_id === null;
+
+                    const groupEl = document.createElement('div');
+                    groupEl.className = 'qs-group' + (isNoMatch ? ' no-match-group' : '');
+                    groupEl.dataset.groupIdx = groupIdx;
+
+                    const badgeClass = getBadgeClass(group.avg_confidence);
+
+                    groupEl.innerHTML = `
+                        <div class="qs-group-header">
+                            <div class="qs-group-title">
+                                <span class="qs-group-name">${isNoMatch ? '❓ No Match' : group.name}</span>
+                                <span class="qs-group-count">${group.faces.length} faces</span>
+                                ${!isNoMatch ? `<span class="qs-group-confidence ${badgeClass}">${group.avg_confidence}% avg</span>` : ''}
+                            </div>
+                            <div class="qs-group-actions">
+                                ${!isNoMatch ? `
+                                    <button class="btn-accept" onclick="acceptGroup(${groupIdx})">
+                                        ✓ Accept All
+                                    </button>
+                                ` : ''}
+                                <button class="btn-reject" onclick="rejectGroup(${groupIdx})">
+                                    ✗ Dismiss All
+                                </button>
+                            </div>
+                        </div>
+                        <div class="qs-faces" id="faces-${groupIdx}">
+                            ${group.faces.map((face, faceIdx) => {
+                        const isHighConf = face.confidence >= 70;
+                        return `
+                                <div class="qs-face ${isHighConf ? 'selected' : 'excluded'}" 
+                                     data-face-id="${face.id}" 
+                                     data-group-idx="${groupIdx}"
+                                     data-face-idx="${faceIdx}"
+                                     data-confidence="${face.confidence}"
+                                     onclick="toggleFace(this)"
+                                     ondblclick="openModal(${groupIdx}, ${faceIdx})">
+                                    <img src="/api/thumbnail/${face.id}" alt="Face">
+                                    <span class="qs-face-badge ${getBadgeClass(face.confidence)}">${face.confidence}%</span>
+                                </div>
+                            `}).join('')}
+                        </div>
+                    `;
+
+                    container.appendChild(groupEl);
+                });
+
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h2>Error loading data</h2>
+                        <p>${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Toggle face inclusion
+        function toggleFace(el) {
+            el.classList.toggle('selected');
+            el.classList.toggle('excluded');
+        }
+
+        // Accept a group
+        async function acceptGroup(groupIdx) {
+            const group = groupsData[groupIdx];
+            if (!group || group.cluster_id === null) return;
+
+            // Get selected face IDs
+            const facesContainer = document.getElementById(`faces-${groupIdx}`);
+            const selectedFaces = facesContainer.querySelectorAll('.qs-face.selected');
+            const faceIds = Array.from(selectedFaces).map(el => parseInt(el.dataset.faceId));
+
+            if (faceIds.length === 0) {
+                alert('No faces selected!');
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                const res = await fetch('/api/quicksort/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cluster_id: group.cluster_id,
+                        face_ids: faceIds
+                    })
+                });
+
+                if (res.ok) {
+                    // Remove accepted faces from UI
+                    selectedFaces.forEach(el => el.remove());
+
+                    // Update count
+                    const remaining = facesContainer.querySelectorAll('.qs-face').length;
+                    if (remaining === 0) {
+                        // Remove entire group
+                        document.querySelector(`.qs-group[data-group-idx="${groupIdx}"]`).remove();
+                    } else {
+                        // Update count badge
+                        const countEl = document.querySelector(`.qs-group[data-group-idx="${groupIdx}"] .qs-group-count`);
+                        countEl.textContent = `${remaining} faces`;
+                    }
+
+                    // Update total
+                    const currentTotal = parseInt(document.getElementById('stat-total').textContent);
+                    document.getElementById('stat-total').textContent = currentTotal - faceIds.length;
+                } else {
+                    const data = await res.json();
+                    alert('Error: ' + (data.error || 'Failed'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Failed to accept group');
+            }
+
+            showLoading(false);
+        }
+
+        // Reject (trash) a group
+        async function rejectGroup(groupIdx) {
+            const group = groupsData[groupIdx];
+            if (!group) return;
+
+            const facesContainer = document.getElementById(`faces-${groupIdx}`);
+            const selectedFaces = facesContainer.querySelectorAll('.qs-face.selected');
+            const faceIds = Array.from(selectedFaces).map(el => parseInt(el.dataset.faceId));
+
+            if (faceIds.length === 0) {
+                alert('No faces selected!');
+                return;
+            }
+
+            if (!confirm(`Dismiss ${faceIds.length} faces?`)) return;
+
+            showLoading(true);
+
+            try {
+                // Trash each face
+                for (const faceId of faceIds) {
+                    await fetch(`/api/face/${faceId}/trash`, { method: 'POST' });
+                }
+
+                // Remove from UI
+                selectedFaces.forEach(el => el.remove());
+
+                const remaining = facesContainer.querySelectorAll('.qs-face').length;
+                if (remaining === 0) {
+                    document.querySelector(`.qs-group[data-group-idx="${groupIdx}"]`).remove();
+                } else {
+                    const countEl = document.querySelector(`.qs-group[data-group-idx="${groupIdx}"] .qs-group-count`);
+                    countEl.textContent = `${remaining} faces`;
+                }
+
+                const currentTotal = parseInt(document.getElementById('stat-total').textContent);
+                document.getElementById('stat-total').textContent = currentTotal - faceIds.length;
+
+            } catch (err) {
+                console.error(err);
+                alert('Failed to dismiss');
+            }
+
+            showLoading(false);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+        }
+
+        // Modal functions
+        function openModal(groupIdx, faceIdx) {
+            const group = groupsData[groupIdx];
+            if (!group) return;
+
+            modalFaces = group.faces;
+            modalIndex = faceIdx;
+            updateModalImage();
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        function modalPrev() {
+            if (modalIndex > 0) {
+                modalIndex--;
+                updateModalImage();
+            }
+        }
+
+        function modalNext() {
+            if (modalIndex < modalFaces.length - 1) {
+                modalIndex++;
+                updateModalImage();
+            }
+        }
+
+        function updateModalImage() {
+            const face = modalFaces[modalIndex];
+            if (face) {
+                document.getElementById('modal-img').src = `/api/image/${face.id}`;
+                document.getElementById('modal-path').textContent = `Face ID: ${face.id} | Confidence: ${face.confidence}%`;
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('modal').classList.contains('hidden')) return;
+
+            if (e.key === 'Escape') closeModal();
+            if (e.key === 'ArrowLeft') modalPrev();
+            if (e.key === 'ArrowRight') modalNext();
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', loadQuickSortData);
+    </script>
+</body>
+
+</html>
