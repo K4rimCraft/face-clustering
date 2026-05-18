@@ -4,27 +4,25 @@ import insightface
 from insightface.app import FaceAnalysis
 
 def check_gpu():
-    print("--- Environment Check (DirectML) ---")
+    print("--- Environment Check (CoreML/CPU) ---")
     print(f"Python: {sys.version.split(' ')[0]}")
     
     # Check ONNX Runtime Providers
     providers = ort.get_available_providers()
     print(f"Available ONNX Providers: {providers}")
     
-    if 'DmlExecutionProvider' not in providers:
-        print("\n[ERROR] DmlExecutionProvider NOT found.")
-        print("Please ensure you installed 'onnxruntime-directml' and NOT 'onnxruntime' or 'onnxruntime-gpu'.")
-        return False
-    
-    print("\n[SUCCESS] DirectML (GPU) is available!")
+    if 'CoreMLExecutionProvider' not in providers:
+        print("\n[WARNING] CoreMLExecutionProvider NOT found. It will fall back to CPU.")
+        print("For M-series Macs, CoreML provides hardware acceleration.")
+    else:
+        print("\n[SUCCESS] CoreML (Apple Silicon) is available!")
     
     # Check InsightFace Initialization
-    print("\n--- Initializing InsightFace (DirectML) ---")
+    print("\n--- Initializing InsightFace (CoreML/CPU) ---")
     try:
-        # InsightFace might complain if we don't pass ctx_id, but for DML we rely on the provider list
-        app = FaceAnalysis(name='buffalo_l', providers=['DmlExecutionProvider'])
+        app = FaceAnalysis(name='buffalo_l', providers=['CoreMLExecutionProvider', 'CPUExecutionProvider'])
         app.prepare(ctx_id=0, det_size=(640, 640))
-        print("[SUCCESS] InsightFace initialized with DirectML!")
+        print("[SUCCESS] InsightFace initialized with CoreML/CPU!")
         return True
     except Exception as e:
         print(f"[ERROR] Failed to initialize InsightFace: {e}")

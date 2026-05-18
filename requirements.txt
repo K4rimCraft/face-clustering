@@ -1,5 +1,5 @@
 insightface>=0.7.3
-onnxruntime-directml>=1.15.0
+onnxruntime>=1.15.0
 numpy<2.0.0
 opencv-python<4.9.0
 pillow>=10.0.0

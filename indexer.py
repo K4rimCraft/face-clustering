@@ -137,9 +137,9 @@ def main():
     SessionMeta, SessionThumb = init_dbs()
     
     # --- InsightFace Init ---
-    console.print("[cyan]Initializing InsightFace (DirectML)...[/cyan]")
-    # Using specific options to ensure DML usage
-    app = FaceAnalysis(name='buffalo_l', providers=['DmlExecutionProvider'])
+    console.print("[cyan]Initializing InsightFace (CoreML/CPU)...[/cyan]")
+    # Using specific options for macOS (Apple Silicon)
+    app = FaceAnalysis(name='buffalo_l', providers=['CoreMLExecutionProvider', 'CPUExecutionProvider'])
     app.prepare(ctx_id=0, det_size=(640, 640))
     console.print("[green]AI Ready![/green]")
     
