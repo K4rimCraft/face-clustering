@@ -34,8 +34,9 @@ desktop.ini
 *.log
 
 # Temp/scratch files
-wdwdw
-edwsds
+archive.zip
+archive1.zip
 
 # InsightFace model cache (large, downloaded automatically)
 .insightface/
+105_classes_pins_dataset/
