@@ -18,9 +18,7 @@ import numpy as np
 from flask import Flask, render_template, jsonify, request, send_file
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sklearn.decomposition import PCA
-from sklearn.cluster import DBSCAN
-from sklearn.metrics.pairwise import cosine_distances
+import ml_core
 from io import BytesIO
 
 # Import database models
@@ -106,25 +104,15 @@ def suggest_name_for_cluster(cluster_faces, known_centroids, threshold=0.45):
     if not cluster_faces or not known_centroids:
         return None
     
-    # Calculate cluster centroid
     embeddings = [f['embedding'] for f in cluster_faces if f['embedding'] is not None]
     if not embeddings:
         return None
     
-    cluster_centroid = np.mean(embeddings, axis=0).reshape(1, -1)
+    cluster_centroid = ml_core.calculate_centroid(embeddings).reshape(1, -1)
+    matches = ml_core.get_top_matches(cluster_centroid, known_centroids, top_k=1)
     
-    # Vectorized: build matrix of all centroids and compute distances at once
-    centroid_ids = list(known_centroids.keys())
-    centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
-    
-    # Single matrix operation instead of loop
-    distances = cosine_distances(cluster_centroid, centroid_matrix)[0]
-    
-    best_idx = np.argmin(distances)
-    best_dist = distances[best_idx]
-    
-    if best_dist < threshold:
-        return f"{known_centroids[centroid_ids[best_idx]]['name']}?"
+    if matches and matches[0]['distance'] < threshold:
+        return f"{matches[0]['name']}?"
     return None
 
 
@@ -173,75 +161,19 @@ def get_quicksort_data():
                 'total': len(unsorted_faces)
             })
         
-        # Build centroid matrix for batch processing
-        centroid_ids = list(known_centroids.keys())
-        centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
-        
         # Collect all embeddings
         face_data = []
         embeddings_list = []
         for f in unsorted_faces:
             if f.embedding:
-                face_data.append({'id': f.id, 'embedding_idx': len(embeddings_list)})
+                face_data.append({'id': f.id})
                 embeddings_list.append(np.frombuffer(f.embedding, dtype=np.float32))
         
         if not embeddings_list:
             return jsonify({'groups': [], 'total': 0})
-        
-        face_matrix = np.array(embeddings_list)
-        
-        # Calculate ALL distances at once (faces x centroids)
-        all_distances = cosine_distances(face_matrix, centroid_matrix)
-        
-        # For each face, find best match
-        groups = {}  # cluster_id -> {name, faces: [{id, confidence}]}
-        no_match = []  # Faces with no good match
-        
-        for i, fd in enumerate(face_data):
-            distances = all_distances[i]
-            best_idx = np.argmin(distances)
-            best_dist = float(distances[best_idx])
             
-            # Calculate confidence
-            if best_dist < 0.4:
-                confidence = 100.0
-            elif best_dist > 1.0:
-                confidence = 0.0
-            else:
-                confidence = (1.0 - best_dist) / (1.0 - 0.4) * 100
-            
-            confidence = round(confidence, 1)
-            
-            if confidence > 5:  # Has a match
-                cid = centroid_ids[best_idx]
-                if cid not in groups:
-                    groups[cid] = {
-                        'cluster_id': cid,
-                        'name': known_centroids[cid]['name'],
-                        'faces': []
-                    }
-                groups[cid]['faces'].append({
-                    'id': fd['id'],
-                    'confidence': confidence
-                })
-            else:
-                no_match.append({
-                    'id': fd['id'],
-                    'confidence': confidence
-                })
-        
-        # Calculate average confidence per group and sort faces
-        result_groups = []
-        for gid, group in groups.items():
-            avg_conf = sum(f['confidence'] for f in group['faces']) / len(group['faces'])
-            group['avg_confidence'] = round(avg_conf, 1)
-            # Sort faces by confidence desc
-            group['faces'].sort(key=lambda x: x['confidence'], reverse=True)
-            result_groups.append(group)
-        
-        # Sort groups by avg_confidence desc
-        result_groups.sort(key=lambda x: x['avg_confidence'], reverse=True)
-        
+        result_groups = ml_core.process_quicksort(face_data, embeddings_list, known_centroids)
+
         # Add no-match group at the end
         if no_match:
             result_groups.append({
@@ -287,7 +219,7 @@ def quicksort_accept():
             cluster_faces = session.query(Face).filter_by(cluster_id=cluster_id).all()
             embeddings = [np.frombuffer(f.embedding, dtype=np.float32) for f in cluster_faces if f.embedding]
             if embeddings:
-                new_centroid = np.mean(embeddings, axis=0)
+                new_centroid = ml_core.calculate_centroid(embeddings)
                 person.mean_embedding = new_centroid.tobytes()
                 person.face_count = len(embeddings)
         
@@ -468,7 +400,7 @@ def get_clusters():
             # Calculate cluster centroid for batch suggestion
             embeddings = [f['embedding'] for f in cluster['faces'] if f.get('embedding') is not None]
             if embeddings and centroid_matrix is not None:
-                cluster_centroid = np.mean(embeddings, axis=0)
+                cluster_centroid = ml_core.calculate_centroid(embeddings)
                 unnamed_clusters_temp.append((cluster_data, cluster_centroid))
             else:
                 cluster_data['suggested_name'] = None
@@ -476,20 +408,8 @@ def get_clusters():
     
     # Batch calculate suggestions for all unnamed clusters at once
     if unnamed_clusters_temp and centroid_matrix is not None:
-        # Build matrix of all unnamed cluster centroids
-        unnamed_centroids = np.array([c[1] for c in unnamed_clusters_temp])
-        
-        # Single matrix operation for ALL clusters vs ALL people
-        all_distances = cosine_distances(unnamed_centroids, centroid_matrix)
-        
-        for i, (cluster_data, _) in enumerate(unnamed_clusters_temp):
-            best_idx = np.argmin(all_distances[i])
-            best_dist = all_distances[i][best_idx]
-            
-            if best_dist < 0.45:  # threshold
-                cluster_data['suggested_name'] = f"{centroid_names[best_idx]}?"
-            else:
-                cluster_data['suggested_name'] = None
+        ml_core.batch_suggest_names(unnamed_clusters_temp, centroid_matrix, centroid_names)
+        for cluster_data, _ in unnamed_clusters_temp:
             unnamed_list.append(cluster_data)
     
 
@@ -564,8 +484,7 @@ def run_clustering():
     embeddings = np.array([f['embedding'] for f in unverified])
     
     # Run DBSCAN with cosine distance on full 512D embeddings
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
-    labels = db.fit_predict(embeddings)
+    labels = ml_core.cluster_faces(embeddings, eps=eps, min_samples=min_samples)
     
     # Get the next available cluster ID
     session = SessionMeta()
@@ -648,7 +567,7 @@ def rename_cluster():
                     return jsonify({'status': 'ok', 'message': 'Renamed empty person'})
                 return jsonify({'error': 'No valid embeddings'}), 400
             
-            cluster_mean = np.mean(embeddings, axis=0)
+            cluster_mean = ml_core.calculate_centroid(embeddings)
             cluster_count = len(faces)
             
             # Check if target name already exists (Merge)
@@ -666,7 +585,7 @@ def rename_cluster():
                 old_count = target_person.face_count or 1
                 
                 # Weighted average
-                new_mean = (old_mean * old_count + cluster_mean * cluster_count) / (old_count + cluster_count)
+                new_mean = ml_core.calculate_weighted_centroid(old_mean, old_count, cluster_mean, cluster_count)
                 target_person.mean_embedding = new_mean.astype(np.float32).tobytes()
                 target_person.face_count = old_count + cluster_count
                 target_cluster_id = target_person.cluster_id
@@ -810,40 +729,10 @@ def get_face_matches(face_id):
         # Get face embedding
         face_embedding = np.frombuffer(face.embedding, dtype=np.float32).reshape(1, -1)
         
-        # Build centroid matrix
-        centroid_ids = list(known_centroids.keys())
-        centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
-        
-        # Calculate distances
-        distances = cosine_distances(face_embedding, centroid_matrix)[0]
-        
-        # Convert to confidence percentage
-        matches = []
-        for i, cid in enumerate(centroid_ids):
-            # Convert distances to standard Python floats for JSON serialization
-            dist = float(distances[i])
-            
-            # Adjusted scale for 512D embeddings without PCA
-            if dist < 0.4:
-                confidence = 100.0
-            elif dist > 1.0:
-                confidence = 0.0
-            else:
-                confidence = (1.0 - dist) / (1.0 - 0.4) * 100
-            
-            if confidence > 0:  # Show all non-zero matches for now
-                matches.append({
-                    'cluster_id': cid,
-                    'name': known_centroids[cid]['name'],
-                    'confidence': round(float(confidence), 1),
-                    'distance': round(dist, 3)
-                })
-        
-        # Sort by confidence (highest first)
-        matches.sort(key=lambda x: x['confidence'], reverse=True)
+        matches = ml_core.get_top_matches(face_embedding, known_centroids, top_k=5)
         
         # Return top 5 matches
-        return jsonify({'matches': matches[:5]})
+        return jsonify({'matches': matches})
     finally:
         session.close()
 
@@ -864,43 +753,16 @@ def get_cluster_matches(cluster_id):
         if not embeddings:
             return jsonify({'matches': []})
             
-        cluster_centroid = np.mean(embeddings, axis=0).reshape(1, -1)
+        cluster_centroid = ml_core.calculate_centroid(embeddings).reshape(1, -1)
         
         # Get known people centroids
         known_centroids = get_person_centroids()
         if not known_centroids:
             return jsonify({'matches': []})
         
-        # Build centroid matrix
-        centroid_ids = list(known_centroids.keys())
-        centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
+        matches = ml_core.get_top_matches(cluster_centroid, known_centroids, top_k=5)
         
-        # Calculate distances
-        distances = cosine_distances(cluster_centroid, centroid_matrix)[0]
-        
-        # Convert to confidence percentage
-        matches = []
-        for i, cid in enumerate(centroid_ids):
-            dist = float(distances[i])
-            
-            # Same scale as face matches
-            if dist < 0.4:
-                confidence = 100.0
-            elif dist > 1.0:
-                confidence = 0.0
-            else:
-                confidence = (1.0 - dist) / (1.0 - 0.4) * 100
-            
-            if confidence > 0:
-                matches.append({
-                    'cluster_id': cid,
-                    'name': known_centroids[cid]['name'],
-                    'confidence': round(float(confidence), 1),
-                    'distance': round(dist, 3)
-                })
-        
-        matches.sort(key=lambda x: x['confidence'], reverse=True)
-        return jsonify({'matches': matches[:5]})
+        return jsonify({'matches': matches})
     finally:
         session.close()
 
