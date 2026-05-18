@@ -1,6 +1,4 @@
 import numpy as np
-from sklearn.cluster import DBSCAN
-from sklearn.metrics.pairwise import cosine_distances
 
 def calculate_centroid(embeddings):
     """
@@ -29,14 +27,82 @@ def calculate_confidence(dist, min_dist=0.4, max_dist=1.0):
     else:
         return (1.0 - dist) / (1.0 - min_dist) * 100
 
+def custom_cosine_distances(A, B):
+    """
+    Computes pairwise cosine distances between two matrices A and B from scratch.
+    """
+    norm_A = np.linalg.norm(A, axis=1, keepdims=True)
+    norm_B = np.linalg.norm(B, axis=1, keepdims=True)
+    
+    norm_A = np.maximum(norm_A, 1e-10)
+    norm_B = np.maximum(norm_B, 1e-10)
+    
+    normalized_A = A / norm_A
+    normalized_B = B / norm_B
+    
+    similarities = np.dot(normalized_A, normalized_B.T)
+    distances = 1.0 - similarities
+    return np.clip(distances, 0.0, 2.0)
+
 def cluster_faces(embeddings, eps=0.45, min_samples=3):
     """
-    Runs DBSCAN on the embeddings and returns cluster labels.
+    Runs DBSCAN on the embeddings from scratch and returns cluster labels.
     """
     if not len(embeddings):
         return []
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
-    return db.fit_predict(embeddings)
+        
+    X = np.array(embeddings)
+    n_samples = X.shape[0]
+    
+    # Precompute distance matrix using our custom function
+    distances = custom_cosine_distances(X, X)
+    
+    labels = np.full(n_samples, -2) # -2 indicates unvisited
+    cluster_id = 0
+    
+    for i in range(n_samples):
+        if labels[i] != -2:
+            continue
+            
+        neighbors = np.where(distances[i] <= eps)[0]
+        
+        if len(neighbors) < min_samples:
+            labels[i] = -1 # Noise
+            continue
+            
+        # Core point found, start a new cluster
+        labels[i] = cluster_id
+        
+        # Initialize queue with neighbors (excluding i)
+        queue = [n for n in neighbors if n != i]
+        in_queue = np.zeros(n_samples, dtype=bool)
+        for n in queue:
+            in_queue[n] = True
+            
+        while queue:
+            p = queue.pop(0)
+            in_queue[p] = False
+            
+            if labels[p] == -1:
+                # Was noise, now border point
+                labels[p] = cluster_id
+                
+            elif labels[p] == -2:
+                labels[p] = cluster_id
+                
+                # Check if p is a core point
+                p_neighbors = np.where(distances[p] <= eps)[0]
+                if len(p_neighbors) >= min_samples:
+                    # Add unvisited neighbors to queue
+                    for n in p_neighbors:
+                        if (labels[n] == -2 or labels[n] == -1) and not in_queue[n]:
+                            queue.append(n)
+                            in_queue[n] = True
+                            
+        cluster_id += 1
+        
+    labels[labels == -2] = -1
+    return labels
 
 def get_top_matches(target_embedding, known_centroids, top_k=5):
     """
@@ -49,7 +115,7 @@ def get_top_matches(target_embedding, known_centroids, top_k=5):
     centroid_ids = list(known_centroids.keys())
     centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
     
-    distances = cosine_distances(target_embedding, centroid_matrix)[0]
+    distances = custom_cosine_distances(target_embedding, centroid_matrix)[0]
     
     matches = []
     for i, cid in enumerate(centroid_ids):
@@ -77,7 +143,7 @@ def batch_suggest_names(unnamed_clusters_temp, centroid_matrix, centroid_names, 
         return
         
     unnamed_centroids = np.array([c[1] for c in unnamed_clusters_temp])
-    all_distances = cosine_distances(unnamed_centroids, centroid_matrix)
+    all_distances = custom_cosine_distances(unnamed_centroids, centroid_matrix)
     
     for i, (cluster_data, _) in enumerate(unnamed_clusters_temp):
         best_idx = np.argmin(all_distances[i])
@@ -97,7 +163,7 @@ def process_quicksort(face_data, embeddings_list, known_centroids):
     centroid_matrix = np.array([known_centroids[cid]['centroid'] for cid in centroid_ids])
     face_matrix = np.array(embeddings_list)
     
-    all_distances = cosine_distances(face_matrix, centroid_matrix)
+    all_distances = custom_cosine_distances(face_matrix, centroid_matrix)
     
     groups = {}
     no_match = []
