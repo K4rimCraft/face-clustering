@@ -18,7 +18,7 @@ from database import init_dbs, Image, Face, FaceThumbnail
 
 # --- Configuration ---
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
-MIN_DET_SCORE = 0.60
+MIN_DET_SCORE = 0.40
 THUMBNAIL_SIZE = (128, 128)
 BATCH_COMMIT_SIZE = 50
 
@@ -66,15 +66,18 @@ def process_image(app, file_path, session_meta, session_thumb):
     """Reads image, detects faces, saves to DB."""
     try:
         # Load image with OpenCV
-        # Handling non-ascii paths by reading as bytes then decoding is sometimes needed,
-        # but standard cv2.imread works on modern Python 3.10+ for Windows mostly.
-        # If path issues arise, we can switch to numpy fromfile.
         img = cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), cv2.IMREAD_COLOR)
         
         if img is None:
             return False # Corrupt or unreadable
             
-        faces = app.get(img)
+        # Add padding to help detect tightly cropped faces
+        pad_percent = 0.5
+        pad_h = int(img.shape[0] * pad_percent)
+        pad_w = int(img.shape[1] * pad_percent)
+        padded_img = cv2.copyMakeBorder(img, pad_h, pad_h, pad_w, pad_w, cv2.BORDER_CONSTANT, value=(0,0,0))
+            
+        faces = app.get(padded_img)
         
         # 1. Create Image Record (original_path = path when first discovered)
         db_image = Image(path=file_path, original_path=file_path, processed=1)
@@ -91,18 +94,26 @@ def process_image(app, file_path, session_meta, session_thumb):
             embedding_bytes = face.embedding.tobytes()
             bbox = face.bbox
             
+            # Adjust bounding box back to original coordinates for the database
+            orig_bbox = [
+                max(0, bbox[0] - pad_w),
+                max(0, bbox[1] - pad_h),
+                min(img.shape[1], bbox[2] - pad_w),
+                min(img.shape[0], bbox[3] - pad_h)
+            ]
+            
             # 3. Create Face Record
             db_face = Face(
                 image_id=db_image.id,
                 embedding=embedding_bytes,
-                bbox=str(list(bbox)), # Store as string representation of list
+                bbox=str(orig_bbox), # Store as string representation of list
                 det_score=float(face.det_score)
             )
             session_meta.add(db_face)
             session_meta.flush() # Flush to get db_face.id
             
-            # 4. Create Thumbnail
-            thumb_bytes = generate_thumbnail(img, bbox)
+            # 4. Create Thumbnail using padded image (ensures we get a good crop even if near edge)
+            thumb_bytes = generate_thumbnail(padded_img, bbox)
             if thumb_bytes:
                 db_thumb = FaceThumbnail(
                     face_id=db_face.id,
