@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import tensorflow as tf
+from collections import deque
 
 # ==========================================
 # RACE CLASSIFIER (TensorFlow)
@@ -88,7 +89,8 @@ def custom_cosine_distances(A, B):
 
 def cluster_faces(embeddings, eps=0.45, min_samples=3):
     """
-    Runs DBSCAN on the embeddings from scratch and returns cluster labels.
+    A custom implementation of the DBSCAN clustering algorithm.
+    Groups facial embeddings based on cosine distance density.
     """
     if not len(embeddings):
         return []
@@ -96,8 +98,12 @@ def cluster_faces(embeddings, eps=0.45, min_samples=3):
     X = np.array(embeddings)
     n_samples = X.shape[0]
     
-    # Precompute distance matrix using our custom function
+    # Calculate the full distance matrix for all points
     distances = custom_cosine_distances(X, X)
+    
+    # Precompute the epsilon neighborhood for every point upfront
+    # so we don't have to recalculate distances during the loop
+    neighbors_list = [np.where(distances[i] <= eps)[0] for i in range(n_samples)]
     
     labels = np.full(n_samples, -2) # -2 indicates unvisited
     cluster_id = 0
@@ -106,36 +112,40 @@ def cluster_faces(embeddings, eps=0.45, min_samples=3):
         if labels[i] != -2:
             continue
             
-        neighbors = np.where(distances[i] <= eps)[0]
+        # Retrieve the precomputed neighbors for the current point
+        neighbors = neighbors_list[i] 
         
         if len(neighbors) < min_samples:
-            labels[i] = -1 # Noise
+            labels[i] = -1 # Mark as Noise
             continue
             
         # Core point found, start a new cluster
         labels[i] = cluster_id
         
-        # Initialize queue with neighbors (excluding i)
-        queue = [n for n in neighbors if n != i]
+        # Initialize a double-ended queue (deque) with the neighbors 
+        # to efficiently expand the cluster outward
+        queue = deque([n for n in neighbors if n != i])
         in_queue = np.zeros(n_samples, dtype=bool)
         for n in queue:
             in_queue[n] = True
             
         while queue:
-            p = queue.pop(0)
+            # Process the next point in the queue
+            p = queue.popleft() 
             in_queue[p] = False
             
             if labels[p] == -1:
-                # Was noise, now border point
+                # Was previously marked as noise, now a border point
                 labels[p] = cluster_id
                 
             elif labels[p] == -2:
                 labels[p] = cluster_id
                 
-                # Check if p is a core point
-                p_neighbors = np.where(distances[p] <= eps)[0]
+                # Check if this border point is also a core point
+                p_neighbors = neighbors_list[p]
+                
                 if len(p_neighbors) >= min_samples:
-                    # Add unvisited neighbors to queue
+                    # Add its unvisited neighbors to the queue to keep expanding
                     for n in p_neighbors:
                         if (labels[n] == -2 or labels[n] == -1) and not in_queue[n]:
                             queue.append(n)
@@ -143,6 +153,7 @@ def cluster_faces(embeddings, eps=0.45, min_samples=3):
                             
         cluster_id += 1
         
+    # Mark any remaining unvisited points as noise
     labels[labels == -2] = -1
     return labels
 
