@@ -1,4 +1,6 @@
 insightface>=0.7.3
+# Core ML / CPU ONNX Runtime (Default)
+# If you have an NVIDIA GPU on Windows/Linux, you must ALSO run: pip install onnxruntime-gpu
 onnxruntime>=1.15.0
 numpy<2.0.0
 opencv-python<4.9.0

@@ -17,6 +17,8 @@ Everything starts with **`indexer.py`**. You point this script at a folder on yo
    - It saves the mathematical fingerprint and the original file path into `metadata.db`.
    - It crops out just the face into a tiny JPEG thumbnail and saves it into `thumbnails.db` (so the web UI can load faces instantly later!).
 
+> **⚡ Hardware Acceleration Note**: The `indexer.py` script is smart! It automatically scans your computer to find the fastest hardware available. If you are on a Mac, it will use your Apple Silicon Neural Engine (CoreML). If you are on a Windows PC with an NVIDIA GPU, make sure you run `pip install onnxruntime-gpu` so the script can detect and use CUDA to process thousands of faces per minute! If you just have a standard CPU, it will gracefully fall back to CPU processing without crashing.
+
 ---
 
 ## Phase 2: Sorting and Viewing (The Server & UI)
