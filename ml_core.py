@@ -1,4 +1,39 @@
 import numpy as np
+import os
+import tensorflow as tf
+
+# ==========================================
+# RACE CLASSIFIER (TensorFlow)
+# ==========================================
+RACE_LABELS = ['White', 'Black', 'Indian', 'East Asian', 'Southeast Asian', 'Middle Eastern', 'Latino/Hispanic']
+
+# Load the trained Keras model once when the module starts
+_race_model = None
+model_path = "race_classifier.keras"
+if os.path.exists(model_path):
+    _race_model = tf.keras.models.load_model(model_path)
+
+def predict_race(embedding):
+    """
+    Predicts the race of a 512D face embedding using the trained TensorFlow model.
+    """
+    if _race_model is None:
+        return "Unknown"
+        
+    # TensorFlow expects a batch of inputs, so we reshape (512,) to (1, 512)
+    x = np.array(embedding).reshape(1, -1)
+    
+    # Run the model
+    probabilities = _race_model.predict(x, verbose=0)
+    
+    # Get the index of the highest probability
+    best_idx = np.argmax(probabilities[0])
+    return RACE_LABELS[best_idx]
+
+# ==========================================
+# MATH & CLUSTERING LOGIC
+# ==========================================
+
 
 def calculate_centroid(embeddings):
     """
