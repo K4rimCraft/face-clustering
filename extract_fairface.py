@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import pandas as pd
 from insightface.app import FaceAnalysis
+from rich.progress import track
 import warnings
 
 # Hide warnings from insightface
@@ -25,13 +26,29 @@ def pad_image(img, pad_percent=0.5):
     pad_w = int(img.shape[1] * pad_percent)
     return cv2.copyMakeBorder(img, pad_h, pad_h, pad_w, pad_w, cv2.BORDER_CONSTANT, value=(0,0,0))
 
-def extract_features(csv_path, img_base_dir, output_prefix, limit=None):
+def extract_features(csv_path, img_base_dir, output_prefix):
     """
     Loops through the FairFace dataset, extracts the 512D embeddings, and saves them.
+    Features auto-save and resume capabilities.
     """
     if not os.path.exists(csv_path):
         print(f"Error: Could not find {csv_path}. Please download the dataset first!")
         return
+
+    X_file = f"{output_prefix}_X.npy"
+    y_file = f"{output_prefix}_y.npy"
+    idx_file = f"{output_prefix}_idx.txt"
+    
+    start_idx = 0
+    if os.path.exists(X_file) and os.path.exists(y_file) and os.path.exists(idx_file):
+        print(f"\n[RESUME] Found existing data for {output_prefix}. Resuming from checkpoint...")
+        X = np.load(X_file).tolist()
+        y = np.load(y_file).tolist()
+        with open(idx_file, "r") as f:
+            start_idx = int(f.read().strip())
+    else:
+        X = []
+        y = []
 
     print("Loading AI Models...")
     # Load InsightFace (Using CoreML for your Mac!)
@@ -41,63 +58,61 @@ def extract_features(csv_path, img_base_dir, output_prefix, limit=None):
     print(f"Reading labels from {csv_path}...")
     df = pd.read_csv(csv_path)
     
-    # For testing, you might not want to process all 86,000 images right away
-    if limit:
-        print(f"Limiting to first {limit} images for testing...")
-        df = df.head(limit)
+    if start_idx >= len(df):
+        print(f"Already fully processed {output_prefix}!")
+        return
         
-    X = [] # This will hold the 512-dimension arrays
-    y = [] # This will hold the race IDs (0-6)
+    print(f"Starting extraction from image {start_idx} out of {len(df)}...")
     
-    print("Starting extraction...")
+    df_remaining = df.iloc[start_idx:]
+    actual_idx = start_idx
     
-    for idx, row in enumerate(df.itertuples()):
-        # The 'file' column in FairFace looks like "train/1.jpg"
-        img_path = os.path.join(img_base_dir, row.file)
+    try:
+        for row in track(df_remaining.itertuples(), total=len(df_remaining), description=f"Processing {output_prefix}"):
+            img_path = os.path.join(img_base_dir, row.file)
+            
+            if os.path.exists(img_path):
+                img = cv2.imread(img_path)
+                if img is not None:
+                    # Pad the image just like we did in indexer.py
+                    padded_img = pad_image(img)
+                    faces = app.get(padded_img)
+                    
+                    # Only process if it successfully found exactly 1 face
+                    if len(faces) == 1:
+                        X.append(faces[0].embedding.astype(np.float32))
+                        y.append(RACE_MAP[row.race])
+            
+            actual_idx += 1
+            
+            # Auto-save every 1000 images in case of a crash
+            if actual_idx % 1000 == 0:
+                np.save(X_file, np.array(X))
+                np.save(y_file, np.array(y))
+                with open(idx_file, "w") as f:
+                    f.write(str(actual_idx))
+                    
+    except KeyboardInterrupt:
+        print(f"\n\n[PAUSED] Process stopped by user at image {actual_idx}!")
+        print("Saving progress so you can resume later...")
         
-        if not os.path.exists(img_path):
-            continue
-            
-        img = cv2.imread(img_path)
-        if img is None:
-            continue
-            
-        # Pad the image just like we did in indexer.py
-        padded_img = pad_image(img)
+    # Save final state before exiting
+    np.save(X_file, np.array(X))
+    np.save(y_file, np.array(y))
+    with open(idx_file, "w") as f:
+        f.write(str(actual_idx))
         
-        # Scan for faces
-        faces = app.get(padded_img)
-        
-        # Only process if it successfully found exactly 1 face
-        if len(faces) == 1:
-            X.append(faces[0].embedding.astype(np.float32))
-            y.append(RACE_MAP[row.race])
-            
-        # Print a status update every 1000 images
-        if (idx + 1) % 1000 == 0:
-            print(f"Processed {idx + 1} / {len(df)} images...")
-            
-    # Convert lists to NumPy arrays
-    X = np.array(X)
-    y = np.array(y)
-    
-    print(f"\nExtraction complete! Successfully processed {len(X)} faces.")
-    
-    # Save the data to disk
-    np.save(f"{output_prefix}_X.npy", X)
-    np.save(f"{output_prefix}_y.npy", y)
-    print(f"Saved data to {output_prefix}_X.npy and {output_prefix}_y.npy")
+    print(f"Successfully saved {len(X)} faces to {X_file} and {y_file}")
 
 if __name__ == "__main__":
     # NOTE: Change these paths based on where you unzip the FairFace dataset!
     TRAIN_CSV = "fairface_label_train.csv"
     VAL_CSV = "fairface_label_val.csv"
-    DATASET_DIR = "." 
+    DATASET_DIR = "./fairface-img-margin025-trainval/" 
     
-    # Change limit=None to process the ENTIRE dataset
-    # We set it to 5000 right now so you can run a quick 2-minute test.
+    # Process the ENTIRE dataset
     print("=== Extracting Training Data ===")
-    extract_features(TRAIN_CSV, DATASET_DIR, output_prefix="fairface_train", limit=5000)
+    extract_features(TRAIN_CSV, DATASET_DIR, output_prefix="fairface_train")
     
     print("\n=== Extracting Validation Data ===")
-    extract_features(VAL_CSV, DATASET_DIR, output_prefix="fairface_val", limit=1000)
+    extract_features(VAL_CSV, DATASET_DIR, output_prefix="fairface_val")
