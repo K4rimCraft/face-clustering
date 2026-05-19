@@ -174,14 +174,7 @@ def get_quicksort_data():
             
         result_groups = ml_core.process_quicksort(face_data, embeddings_list, known_centroids)
 
-        # Add no-match group at the end
-        if no_match:
-            result_groups.append({
-                'cluster_id': None,
-                'name': None,
-                'faces': no_match,
-                'avg_confidence': 0
-            })
+
         
         return jsonify({
             'groups': result_groups,
