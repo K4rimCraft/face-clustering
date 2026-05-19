@@ -55,17 +55,24 @@ model.compile(
 model.summary()
 
 # ==========================================
-# 3. TRAIN THE MODEL
+# 3. TRAIN THE MODEL WITH SMART CALLBACKS
 # ==========================================
 print("\nStarting training...")
-# We train for 20 Epochs (passes over the dataset). 
-# We use the explicit FairFace validation dataset to test accuracy on unseen data.
+
+# EarlyStopping: Stop training if the validation loss doesn't improve for 5 epochs
+# ReduceLROnPlateau: If the validation loss stops improving, divide the learning rate by 2 to make finer adjustments
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-6, verbose=1)
+]
+
 history = model.fit(
     X_train, 
     y_train, 
-    epochs=20, 
+    epochs=50, # We can safely set this higher because EarlyStopping will catch it!
     batch_size=32, 
-    validation_data=(X_val, y_val)
+    validation_data=(X_val, y_val),
+    callbacks=callbacks
 )
 
 # ==========================================
