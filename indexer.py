@@ -152,7 +152,18 @@ def main():
     # --- InsightFace Init ---
     console.print("[cyan]Initializing InsightFace (CoreML/CPU)...[/cyan]")
     # Using specific options for macOS (Apple Silicon)
-    app = FaceAnalysis(name='buffalo_l', providers=['CoreMLExecutionProvider', 'CPUExecutionProvider'])
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    providers = []
+    
+    # Prioritize hardware acceleration based on what's installed and available
+    if 'CUDAExecutionProvider' in available: providers.append('CUDAExecutionProvider') # NVIDIA
+    elif 'CoreMLExecutionProvider' in available: providers.append('CoreMLExecutionProvider') # Apple Silicon
+    elif 'DmlExecutionProvider' in available: providers.append('DmlExecutionProvider') # Windows AMD/Intel/NVIDIA
+    providers.append('CPUExecutionProvider') # Always fallback to CPU
+    
+    print(f"Loading InsightFace with providers: {providers}")
+    app = FaceAnalysis(name='buffalo_l', providers=providers)
     app.prepare(ctx_id=0, det_size=(640, 640))
     console.print("[green]AI Ready![/green]")
     

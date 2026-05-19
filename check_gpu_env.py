@@ -20,7 +20,14 @@ def check_gpu():
     # Check InsightFace Initialization
     print("\n--- Initializing InsightFace (CoreML/CPU) ---")
     try:
-        app = FaceAnalysis(name='buffalo_l', providers=['CoreMLExecutionProvider', 'CPUExecutionProvider'])
+        available_providers = ort.get_available_providers()
+        providers = []
+        if 'CUDAExecutionProvider' in available_providers: providers.append('CUDAExecutionProvider')
+        elif 'CoreMLExecutionProvider' in available_providers: providers.append('CoreMLExecutionProvider')
+        elif 'DmlExecutionProvider' in available_providers: providers.append('DmlExecutionProvider')
+        providers.append('CPUExecutionProvider')
+        
+        app = FaceAnalysis(name='buffalo_l', providers=providers)
         app.prepare(ctx_id=0, det_size=(640, 640))
         print("[SUCCESS] InsightFace initialized with CoreML/CPU!")
         return True

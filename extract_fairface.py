@@ -51,8 +51,16 @@ def extract_features(csv_path, img_base_dir, output_prefix):
         y = []
 
     print("Loading AI Models...")
-    # Load InsightFace (Using CoreML for your Mac!)
-    app = FaceAnalysis(name='buffalo_l', providers=['CoreMLExecutionProvider', 'CPUExecutionProvider'])
+    # Auto-detect optimal ONNX hardware acceleration
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    providers = []
+    if 'CUDAExecutionProvider' in available: providers.append('CUDAExecutionProvider')
+    elif 'CoreMLExecutionProvider' in available: providers.append('CoreMLExecutionProvider')
+    elif 'DmlExecutionProvider' in available: providers.append('DmlExecutionProvider')
+    providers.append('CPUExecutionProvider')
+
+    app = FaceAnalysis(name='buffalo_l', providers=providers)
     app.prepare(ctx_id=0, det_size=(640, 640))
     
     print(f"Reading labels from {csv_path}...")
