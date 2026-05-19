@@ -722,6 +722,34 @@ async function showContextMenu(e) {
             console.log('Selected face object:', faceObj);
             const faceId = faceObj.id || faceObj;  // Handle both {id, el} and just id
             console.log('Face ID:', faceId);
+            
+            // 1. Fetch Race
+            try {
+                const raceRes = await fetch(`/api/face/${faceId}/race`);
+                const raceData = await raceRes.json();
+                if (raceData.status === 'ok') {
+                    const raceHeader = document.createElement('div');
+                    raceHeader.className = 'ctx-section-header';
+                    raceHeader.style.display = 'flex';
+                    raceHeader.style.alignItems = 'center';
+                    raceHeader.style.justifyContent = 'space-between';
+                    raceHeader.innerHTML = `
+                        <span>🧬 AI Race Prediction</span>
+                        <span class="badge" style="background: rgba(88, 166, 255, 0.1); color: var(--accent-blue); border: 1px solid rgba(88, 166, 255, 0.2); font-size: 10px;">
+                            ${raceData.race}
+                        </span>
+                    `;
+                    list.appendChild(raceHeader);
+                    
+                    const sep0 = document.createElement('div');
+                    sep0.className = 'ctx-separator';
+                    list.appendChild(sep0);
+                }
+            } catch (err) {
+                console.error('Failed to load race:', err);
+            }
+
+            // 2. Fetch Matches
             try {
                 const matchRes = await fetch(`/api/face/${faceId}/matches`);
                 const matchData = await matchRes.json();

@@ -711,6 +711,19 @@ def move_face(face_id):
         session.close()
 
 
+@app.route('/api/face/<int:face_id>/race')
+def get_face_race(face_id):
+    session = SessionMeta()
+    try:
+        f = session.query(Face).get(face_id)
+        if f and f.embedding:
+            embedding = np.frombuffer(f.embedding, dtype=np.float32)
+            race = ml_core.predict_race([embedding])
+            return jsonify({'status': 'ok', 'race': race})
+        return jsonify({'status': 'error', 'error': 'Face not found'})
+    finally:
+        session.close()
+
 @app.route('/api/face/<int:face_id>/matches')
 def get_face_matches(face_id):
     """
