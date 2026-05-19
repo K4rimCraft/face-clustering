@@ -454,6 +454,19 @@ function createClusterCard(cluster, isVerified) {
     trashBtn.onclick = () => trashCluster(cluster.id, cluster.count);
 
     header.appendChild(input);
+    
+    // Render Race Badge
+    if (cluster.race) {
+        const raceBadge = document.createElement('span');
+        raceBadge.className = 'badge'; // Uses native UI badge shape
+        raceBadge.style.background = 'rgba(88, 166, 255, 0.1)'; // Soft blue
+        raceBadge.style.color = 'var(--accent-blue)';
+        raceBadge.style.border = '1px solid rgba(88, 166, 255, 0.2)';
+        raceBadge.style.whiteSpace = 'nowrap';
+        raceBadge.textContent = cluster.race;
+        header.appendChild(raceBadge);
+    }
+    
     header.appendChild(saveBtn);
     header.appendChild(trashBtn);
     header.appendChild(count);
