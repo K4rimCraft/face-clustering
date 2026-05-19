@@ -13,22 +13,29 @@ model_path = "race_classifier.keras"
 if os.path.exists(model_path):
     _race_model = tf.keras.models.load_model(model_path)
 
-def predict_race(embedding):
+def predict_race(embeddings):
     """
-    Predicts the race of a 512D face embedding using the trained TensorFlow model.
+    Predicts the race of a cluster of 512D face embeddings using a majority vote.
     """
-    if _race_model is None:
+    if _race_model is None or not embeddings:
         return "Unknown"
         
-    # TensorFlow expects a batch of inputs, so we reshape (512,) to (1, 512)
-    x = np.array(embedding).reshape(1, -1)
-    
-    # Run the model
+    # Ensure inputs are a 2D array (batch)
+    x = np.array(embeddings)
+    if x.ndim == 1:
+        x = x.reshape(1, -1)
+        
+    # Run the model on the entire batch at once (super fast!)
     probabilities = _race_model.predict(x, verbose=0)
     
-    # Get the index of the highest probability
-    best_idx = np.argmax(probabilities[0])
-    return RACE_LABELS[best_idx]
+    # Get the predicted index for each face in the cluster
+    best_indices = np.argmax(probabilities, axis=1)
+    
+    # Find the most common prediction (Majority Vote)
+    values, counts = np.unique(best_indices, return_counts=True)
+    mode_index = values[np.argmax(counts)]
+    
+    return RACE_LABELS[mode_index]
 
 # ==========================================
 # MATH & CLUSTERING LOGIC

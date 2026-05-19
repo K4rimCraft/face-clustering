@@ -388,15 +388,28 @@ def get_clusters():
         
         # Determine category
         if cluster['name'] or cluster['is_verified']:
+            embeddings = [f['embedding'] for f in cluster['faces'] if f.get('embedding') is not None]
+            if embeddings:
+                # Pass all embeddings to predict_race for a majority vote
+                cluster_data['race'] = ml_core.predict_race(embeddings)
+            else:
+                cluster_data['race'] = 'Unknown'
             named_list.append(cluster_data)
         else:
             # Calculate cluster centroid for batch suggestion
             embeddings = [f['embedding'] for f in cluster['faces'] if f.get('embedding') is not None]
             if embeddings and centroid_matrix is not None:
                 cluster_centroid = ml_core.calculate_centroid(embeddings)
+                cluster_data['race'] = ml_core.predict_race(embeddings)
                 unnamed_clusters_temp.append((cluster_data, cluster_centroid))
+            elif embeddings:
+                cluster_centroid = ml_core.calculate_centroid(embeddings)
+                cluster_data['race'] = ml_core.predict_race(embeddings)
+                cluster_data['suggested_name'] = None
+                unnamed_list.append(cluster_data)
             else:
                 cluster_data['suggested_name'] = None
+                cluster_data['race'] = 'Unknown'
                 unnamed_list.append(cluster_data)
     
     # Batch calculate suggestions for all unnamed clusters at once
