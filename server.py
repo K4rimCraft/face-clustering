@@ -388,28 +388,15 @@ def get_clusters():
         
         # Determine category
         if cluster['name'] or cluster['is_verified']:
-            embeddings = [f['embedding'] for f in cluster['faces'] if f.get('embedding') is not None]
-            if embeddings:
-                # Pass all embeddings to predict_race for a majority vote
-                cluster_data['race'] = ml_core.predict_race(embeddings)
-            else:
-                cluster_data['race'] = 'Unknown'
             named_list.append(cluster_data)
         else:
             # Calculate cluster centroid for batch suggestion
             embeddings = [f['embedding'] for f in cluster['faces'] if f.get('embedding') is not None]
             if embeddings and centroid_matrix is not None:
                 cluster_centroid = ml_core.calculate_centroid(embeddings)
-                cluster_data['race'] = ml_core.predict_race(embeddings)
                 unnamed_clusters_temp.append((cluster_data, cluster_centroid))
-            elif embeddings:
-                cluster_centroid = ml_core.calculate_centroid(embeddings)
-                cluster_data['race'] = ml_core.predict_race(embeddings)
-                cluster_data['suggested_name'] = None
-                unnamed_list.append(cluster_data)
             else:
                 cluster_data['suggested_name'] = None
-                cluster_data['race'] = 'Unknown'
                 unnamed_list.append(cluster_data)
     
     # Batch calculate suggestions for all unnamed clusters at once
@@ -445,11 +432,21 @@ def get_clusters():
     start_u = (page_unnamed - 1) * per_page
     end_u = start_u + per_page
     
-
+    paginated_named = named_list[start_n:end_n]
+    paginated_unnamed = unnamed_list[start_u:end_u]
+    
+    # Run heavy ML predictions ONLY on the faces that are actually being shown on this page
+    for c in paginated_named + paginated_unnamed:
+        # Grab embeddings from the original clusters dictionary, since c['faces'] only contains id and path
+        embeddings = [f['embedding'] for f in clusters[c['id']]['faces'] if f.get('embedding') is not None]
+        if embeddings:
+            c['race'] = ml_core.predict_race(embeddings)
+        else:
+            c['race'] = "Unknown"
     
     return jsonify({
-        'named_clusters': named_list[start_n:end_n],
-        'unnamed_clusters': unnamed_list[start_u:end_u],
+        'named_clusters': paginated_named,
+        'unnamed_clusters': paginated_unnamed,
         'unsorted_faces': unsorted[:preview_size],
         'unsorted_total': len(unsorted),
         'pagination': {
