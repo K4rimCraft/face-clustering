@@ -49,4 +49,3 @@ fairface_train_y.npy
 fairface_val_idx.txt
 fairface_val_X.npy
 fairface_val_y.npy
-race_classifier.keras
